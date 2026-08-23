@@ -8,7 +8,7 @@ const API_BASE = "/api/v1";
 export const chatApi = {
   createSession: async (): Promise<string> => {
     // 1. Added trailing slash here!
-    const res = await fetch(`${API_BASE}/sessions/`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/sessions`, { method: 'POST' });
     if (!res.ok) throw new Error('Failed to initialize chat.');
     const data = await res.json();
     
