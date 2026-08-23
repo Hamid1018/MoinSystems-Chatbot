@@ -11,3 +11,4 @@ alembic
 google-generativeai
 groq
 resend
+sentence-transformers
