@@ -1,6 +1,7 @@
 import asyncio
 from logging.config import fileConfig
 import os
+from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.config import settings
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
@@ -89,24 +90,34 @@ async def run_async_migrations() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    
-    # 1. Fetch the database URL from the environment or settings
+
+    # 1. Fetch database URL from environment or settings
     db_url = os.getenv("DATABASE_URL") or getattr(settings, "DATABASE_URL", "")
-    
-    # 2. Guarantee the asyncpg driver prefix
+
+    # 2. Ensure asyncpg driver prefix
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
     elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+asyncpg://"):
         db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        
-    if db_url:
-        config.set_main_option("sqlalchemy.url", db_url)
 
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # 3. Create engine directly without passing through configparser
+    if db_url:
+        connectable = create_async_engine(
+            db_url,
+            poolclass=pool.NullPool,
+        )
+    else:
+        connectable = async_engine_from_config(
+            config.get_section(config.config_ini_section, {}),
+            prefix="sqlalchemy.",
+            poolclass=pool.NullPool,
+        )
+
+    async def run_async_migrations():
+        async with connectable.connect() as connection:
+            await connection.run_sync(do_run_migrations)
+        await connectable.dispose()
+
     asyncio.run(run_async_migrations())
 
 
