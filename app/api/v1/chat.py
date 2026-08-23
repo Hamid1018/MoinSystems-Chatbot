@@ -14,6 +14,8 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/")
+@router.post("", status_code=200)
+@router.post("/", status_code=200)
 @limiter.limit("5/minute")
 async def send_message(request: Request, payload: ChatRequest, db: Session = Depends(get_db)):
     
