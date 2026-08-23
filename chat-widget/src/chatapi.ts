@@ -3,7 +3,7 @@ export interface ChatMessage {
   content: string;
 }
 
-const API_BASE = "";
+const API_BASE = "/api/v1";
 
 export const chatApi = {
   createSession: async (): Promise<string> => {
