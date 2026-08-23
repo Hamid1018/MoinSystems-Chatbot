@@ -1,0 +1,155 @@
+.chat-widget-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+}
+
+.chat-launcher {
+  background: #1e293b;
+  color: white;
+  border: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(30, 41, 59, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Solid, clean panel matching the screenshot */
+.chat-panel {
+  width: 380px;
+  height: 600px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Exact dark navy header */
+.chat-header {
+  background: #192132; 
+  color: white;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-brand h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
+.online-indicator {
+  width: 8px;
+  height: 8px;
+  background-color: #22c55e; 
+  border-radius: 50%;
+  margin-left: 2px;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+/* Solid white/gray chat area */
+.chat-messages {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #f8f9fb;
+}
+
+.message-wrapper {
+  display: flex;
+  width: 100%;
+}
+
+.message-wrapper.user {
+  justify-content: flex-end;
+}
+
+.message {
+  max-width: 80%;
+  padding: 12px 16px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+/* Screenshot: Dark Navy User Bubble */
+.user .message {
+  background: #192132;
+  color: white;
+  border-radius: 16px 16px 2px 16px; 
+}
+
+/* Screenshot: Solid Light Gray Assistant Bubble (No Border) */
+.assistant .message {
+  background: #ffffff;
+  color: #334155;
+  border-radius: 16px 16px 16px 2px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.error .message {
+  background: #fef2f2;
+  color: #ef4444;
+  border-radius: 8px;
+}
+
+/* Screenshot: Pill-shaped input area */
+.chat-composer {
+  padding: 16px;
+  background: #ffffff;
+}
+
+.chat-composer-inner {
+  display: flex;
+  align-items: center;
+  background: #f8f9fb;
+  border: 1px solid #e2e8f0;
+  border-radius: 30px; 
+  padding: 4px 6px 4px 16px;
+}
+
+.chat-composer input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13.5px;
+  color: #334155;
+  outline: none;
+}
+
+.chat-composer button {
+  background: transparent;
+  color: #192132;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
