@@ -6,6 +6,7 @@ asyncpg
 pgvector
 pydantic
 pydantic-settings
+email-validator
 slowapi
 python-dotenv
 alembic
