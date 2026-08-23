@@ -43,9 +43,7 @@ app.add_middleware(
 def health_check():
     return {"status": "healthy"}
 
-@app.get("/", tags=["default"])
-def root():
-    return {"message": "Welcome to the API"}
+
 
 # 2. Register the router with the FastAPI app
 app.include_router(chat_router, prefix="/api/v1")
