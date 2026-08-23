@@ -1,6 +1,7 @@
 import asyncio
 from logging.config import fileConfig
-
+import os
+from app.core.config import settings
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
@@ -89,14 +90,23 @@ async def run_async_migrations() -> None:
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
     
-    configuration = config.get_section(config.config_ini_section) or {}
-    configuration["sqlalchemy.url"] = settings.database_url
+    # 1. Fetch the database URL from the environment or settings
+    db_url = os.getenv("DATABASE_URL") or getattr(settings, "DATABASE_URL", "")
+    
+    # 2. Guarantee the asyncpg driver prefix
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+asyncpg://"):
+        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        
+    if db_url:
+        config.set_main_option("sqlalchemy.url", db_url)
+
     connectable = async_engine_from_config(
-        configuration,
+        config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-
     asyncio.run(run_async_migrations())
 
 
