@@ -3,7 +3,7 @@ export interface ChatMessage {
   content: string;
 }
 
- const API_BASE = 'http://localhost:8000/api/v1'; // Update to production URL later
+const API_BASE = "";
 
 export const chatApi = {
   createSession: async (): Promise<string> => {
