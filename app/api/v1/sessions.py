@@ -6,9 +6,11 @@ from app.schemas.lead import SessionCreateResponse, LeadCaptureRequest
 
 router = APIRouter(tags=["Sessions & Leads"])
 
-@router.post("", status_code=201)
-@router.post("/", status_code=201)
-def create_session(db: Session = Depends(get_db)):
+@router.post("", response_model=SessionCreateResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=SessionCreateResponse, status_code=status.HTTP_201_CREATED)
+async def create_session(
+    db: Session = Depends(get_db)
+):
     """Creates a new chat session and returns the UUID."""
     new_session = ChatSession()
     db.add(new_session)
