@@ -1,8 +1,7 @@
-
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
 
 import logging
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request,HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -33,9 +32,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler) # typ
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://moinsystemsai.com", "http://localhost:3000", "http://localhost:5173"],
+    allow_origins=["*"],          # or list your widget's domain
     allow_credentials=True,
-   allow_methods=["GET", "POST"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -67,12 +66,19 @@ if os.path.exists(DIST_DIR):
     async def serve_root():
         return FileResponse(os.path.join(DIST_DIR, "index.html"))
 
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa(full_path: str):
-        # Do not catch API routes
-        if full_path.startswith("api") or full_path.startswith("docs") or full_path.startswith("openapi.json"):
-            return None
-        file_path = os.path.join(DIST_DIR, full_path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
-        return FileResponse(os.path.join(DIST_DIR, "index.html"))
+  
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_spa(full_path: str, request: Request):
+    # Guard all API-related paths — return 404 so the real router handles it
+    if (
+        full_path.startswith("api")
+        or full_path.startswith("docs")
+        or full_path.startswith("openapi.json")
+        or full_path.startswith("redoc")
+    ):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    file_path = os.path.join(DIST_DIR, full_path)
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    return FileResponse(os.path.join(DIST_DIR, "index.html"))
