@@ -21,7 +21,7 @@ export const chatApi = {
 
   sendMessage: async (sessionId: string, message: string) => {
     // Trailing slash is already here, but double-check it!
-    const res = await fetch(`${API_BASE}/chat/`, {
+    const res = await fetch(`${API_BASE}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId, message })
