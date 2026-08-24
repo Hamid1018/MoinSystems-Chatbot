@@ -13,11 +13,8 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 limiter = Limiter(key_func=get_remote_address)
 
 
-@router.post("/")
-@router.post("", response_model=ChatResponse)
-@router.post("/", response_model=ChatResponse)
-@limiter.limit("5/minute")
-@router.post("/", status_code=200)
+@router.post("", response_model=ChatResponse, status_code=200)
+@router.post("/", response_model=ChatResponse, status_code=200)
 @limiter.limit("5/minute")
 async def send_message(request: Request, payload: ChatRequest, db: Session = Depends(get_db)):
     

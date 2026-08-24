@@ -47,7 +47,7 @@ def health_check():
 
 # 2. Register the router with the FastAPI app
 app.include_router(chat_router, prefix="/api/v1")
-app.include_router(sessions_router, prefix="/api/v1")
+app.include_router(sessions_router, prefix="/api/v1/sessions")
 
 
 import os
