@@ -1,25 +1,22 @@
 import os
-import resend
 import logging
-from dotenv import load_dotenv
-from tenacity import retry, stop_after_attempt, wait_exponential
+import asyncio
+import resend
 from app.db.models import ChatSession
-
-# 1. FORCE Python to read your .env file
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+
 class EmailService:
     def __init__(self):
-        # This will now successfully grab your API key!
-        resend.api_key = os.getenv("RESEND_API_KEY") 
-        
-        if not resend.api_key:
-            logger.error("CRITICAL ERROR: Resend API Key is missing! Check your .env file.")
+        api_key = os.getenv("RESEND_API_KEY")  # ✅ Railway injects env vars directly
+        if not api_key:
+            logger.error("RESEND_API_KEY is not set in environment variables!")
+            raise RuntimeError("RESEND_API_KEY is missing. Set it in Railway Variables.")
+        resend.api_key = api_key
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def send_lead_notification(self, session: ChatSession) -> str:
+        """Send lead notification email via Resend."""
         html_payload = f"""
         <h2>New Lead Submission</h2>
         <ul>
@@ -29,19 +26,26 @@ class EmailService:
             <li><strong>Session ID:</strong> {session.id}</li>
         </ul>
         """
-        
-        params = {
-            "from": "onboarding@resend.dev", 
-            "to": ["hamidnazir778@gmail.com"], 
+
+        params: resend.Emails.SendParams = {
+            "from": "onboarding@resend.dev",
+            "to": ["hamidnazir778@gmail.com"],
             "subject": f"New Lead: {session.full_name}",
             "html": html_payload,
         }
-        
+
+        # ✅ resend.Emails.send() is synchronous — run it in a thread pool
+        # so it doesn't block the async event loop
         try:
-            response = resend.Emails.send(params)  # type: ignore
-            logger.info(f"Email sent successfully. Message ID: {response['id']}")
-            return response["id"]
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,  # uses default ThreadPoolExecutor
+                lambda: resend.Emails.send(params)
+            )
+            message_id = response["id"]
+            logger.info("Lead email sent successfully. Message ID: %s", message_id)
+            return message_id
+
         except Exception as e:
-            # 2. If it fails, print the EXACT error from Resend to the terminal
-            logger.error(f"RESEND API ERROR: {str(e)}")
-            raise e
+            logger.error("Resend API error: %s", str(e))
+            raise  # re-raise so state_service can handle it gracefully
