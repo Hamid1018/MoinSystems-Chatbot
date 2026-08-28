@@ -3,24 +3,24 @@ import { chatApi, type ChatMessage } from './chatapi';
 import './chat.css';
 
 export const ChatWidget: React.FC = () => {
-  const [isOpen, setIsOpen] = useState(true); // Defaulting to true for testing
-  const [sessionId, setSessionId] = useState<string | null>(() => {
-    return localStorage.getItem('moin_chat_session');
-  });
+  const [isOpen, setIsOpen] = useState(true);
+  const [sessionId, setSessionId] = useState<string | null>(null); // ✅ always start null
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // ✅ Always create a fresh session on mount — never reuse old sessions
   useEffect(() => {
-    if (!sessionId) {
-      chatApi.createSession().then(id => {
+    localStorage.removeItem('moin_chat_session'); // clear any stale session
+    chatApi.createSession()
+      .then(id => {
         setSessionId(id);
-        localStorage.setItem('moin_chat_session', id);
-      }).catch(() => setError("Failed to connect."));
-    }
-  }, [sessionId]);
+        // ✅ Don't persist to localStorage — each page load gets a fresh session
+      })
+      .catch(() => setError("Failed to connect."));
+  }, []); // ✅ empty dep array = runs once on mount only
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -62,11 +62,10 @@ export const ChatWidget: React.FC = () => {
       {isOpen && (
         <div className="chat-panel" role="dialog" aria-label="Chat support">
           <div className="chat-header">
-          <div className="header-brand">
-              {/* Exact 'M' style logo from screenshot */}
+            <div className="header-brand">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
-                 <path d="M4 18L10 6L14 14" stroke="#60a5fa" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                 <path d="M10 18L16 6L20 14" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M4 18L10 6L14 14" stroke="#60a5fa" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M10 18L16 6L20 14" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
               <h3>MoinSystem AI</h3>
               <span className="online-indicator"></span>
@@ -92,7 +91,11 @@ export const ChatWidget: React.FC = () => {
                 </div>
               </div>
             )}
-            {error && <div className="message-wrapper error"><div className="message">{error}</div></div>}
+            {error && (
+              <div className="message-wrapper error">
+                <div className="message">{error}</div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 
@@ -104,10 +107,14 @@ export const ChatWidget: React.FC = () => {
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSend()}
                 placeholder="Ask a question..."
-                disabled={isLoading}
+                disabled={isLoading || !sessionId} // ✅ disable until session is ready
                 aria-label="Type your message"
               />
-              <button onClick={handleSend} disabled={isLoading || !input.trim()} aria-label="Send Message">
+              <button
+                onClick={handleSend}
+                disabled={isLoading || !input.trim() || !sessionId} // ✅ same guard
+                aria-label="Send Message"
+              >
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13"></line>
                   <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
