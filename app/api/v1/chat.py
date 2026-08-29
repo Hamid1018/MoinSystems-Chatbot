@@ -39,6 +39,7 @@ async def send_message(request: Request, payload: ChatRequest, db: Session = Dep
         # Handles UUID parsing errors or missing session errors
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(ve))
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Chat generation failed: {str(e)}"
