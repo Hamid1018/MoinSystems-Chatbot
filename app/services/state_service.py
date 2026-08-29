@@ -1,4 +1,6 @@
+import os
 import logging
+import traceback
 from sqlalchemy.orm import Session
 from pydantic import EmailStr, TypeAdapter
 from app.db.models import ChatSession, LeadState
@@ -6,10 +8,6 @@ from app.llm.groq_provider import GroqProvider
 
 logger = logging.getLogger(__name__)
 
-# ✅ Valid Groq models — pick one:
-# "llama3-8b-8192"      — fastest, cheapest
-# "llama3-70b-8192"     — smarter, slower
-# "mixtral-8x7b-32768"  — good balance
 GROQ_MODEL = "llama3-8b-8192"
 
 
@@ -17,7 +15,7 @@ class StateService:
     def __init__(self, db: Session):
         self.db = db
         self.llm = GroqProvider()
-        self.llm.model_name = GROQ_MODEL  # ✅ valid Groq model, not openai/gpt-oss-20b
+        self.llm.model_name = GROQ_MODEL
 
     async def detect_intent(self, user_message: str) -> bool:
         """Determines if the user is asking a pricing/quote question."""
@@ -33,7 +31,7 @@ class StateService:
             return "true" in response.lower()
         except Exception as e:
             logger.exception("detect_intent failed: %s", str(e))
-            return False  # safe default — don't crash the flow
+            return False
 
     async def extract_lead_data(self, user_message: str, data_type: str) -> str:
         """Extracts specific entities (name, email, phone) from user messages."""
@@ -50,12 +48,12 @@ class StateService:
             return response.strip()
         except Exception as e:
             logger.exception("extract_lead_data failed for %s: %s", data_type, str(e))
-            return "None"  # safe default
+            return "None"
 
     async def process_state(self, session: ChatSession, user_message: str) -> dict:
         """Runs the state machine to handle lead capture transitions."""
 
-        # 1. Normal State — detect pricing intent
+        # 1. Normal State
         if session.lead_state == LeadState.NORMAL:  # type: ignore
             is_pricing_intent = await self.detect_intent(user_message)
             if is_pricing_intent:
@@ -64,7 +62,7 @@ class StateService:
                 return {
                     "append": "To give you an accurate estimate, may I please have your full name?",
                     "state": session.lead_state,
-                    "pricing_intent": True,  # ← chat_service reads this
+                    "pricing_intent": True,
                 }
             return {
                 "append": "",
@@ -75,6 +73,7 @@ class StateService:
         # 2. Collecting Name
         elif session.lead_state == LeadState.COLLECTING_NAME:  # type: ignore
             extracted_name = await self.extract_lead_data(user_message, "full name")
+            logger.info("Extracted name: '%s'", extracted_name)
 
             if not extracted_name or extracted_name.lower() in ["none", "unknown", "null"]:
                 return {
@@ -96,6 +95,7 @@ class StateService:
         # 3. Collecting Email
         elif session.lead_state == LeadState.COLLECTING_EMAIL:  # type: ignore
             extracted_email = await self.extract_lead_data(user_message, "email address")
+            logger.info("Extracted email: '%s'", extracted_email)
 
             try:
                 email_adapter = TypeAdapter(EmailStr)
@@ -119,6 +119,7 @@ class StateService:
         # 4. Collecting Phone
         elif session.lead_state == LeadState.COLLECTING_PHONE:  # type: ignore
             extracted_phone = await self.extract_lead_data(user_message, "phone number")
+            logger.info("Extracted phone: '%s'", extracted_phone)
 
             if not extracted_phone or extracted_phone.lower() in ["none", "unknown", "null"]:
                 return {
@@ -127,16 +128,16 @@ class StateService:
                     "pricing_intent": False,
                 }
 
-            # ✅ CRITICAL FIX: Save phone + state to DB FIRST, BEFORE sending email.
-            # This ensures DB is never rolled back due to an email failure.
+            # ✅ STEP 1: Save lead data FIRST before anything else
             session.contact_number = extracted_phone  # type: ignore
             session.lead_state = LeadState.COMPLETED  # type: ignore
             session.delivery_status = "pending"  # type: ignore
 
             try:
-                self.db.commit()  # ✅ Commit lead data independently of email
+                self.db.commit()
+                logger.info("Lead data committed to DB for session %s", session.id)
             except Exception as e:
-                logger.exception("Failed to save phone number for session %s", session.id)
+                logger.error("FULL TRACEBACK:\n%s", traceback.format_exc())
                 self.db.rollback()
                 return {
                     "append": "Sorry, we had a technical issue saving your details. Please try again.",
@@ -144,22 +145,56 @@ class StateService:
                     "pricing_intent": False,
                 }
 
-            # ✅ Now send email — failure here will NOT roll back the saved lead
+            # ✅ STEP 2: Send email AFTER commit — failure won't roll back lead data
+            logger.info(
+                "Attempting email send. RESEND_API_KEY present: %s",
+                bool(os.getenv("RESEND_API_KEY"))
+            )
+
             from app.services.email_service import EmailService
-            email_service = EmailService()
+            prompt_append = ""
+
             try:
+                email_service = EmailService()
+                logger.info("EmailService initialized successfully")
+
                 message_id = await email_service.send_lead_notification(session)
+                logger.info("Email sent successfully. Message ID: %s", message_id)
+
                 session.delivery_status = "delivered"  # type: ignore
                 session.provider_message_id = message_id  # type: ignore
-                self.db.commit()  # update delivery status only
+
+                try:
+                    self.db.commit()
+                except Exception:
+                    logger.warning("Could not update delivery_status to delivered — non-critical")
+                    self.db.rollback()
+
                 prompt_append = (
                     "Thank you so much! Our team has been notified and will reach out to you shortly."
                 )
-            except Exception as e:
-                logger.error(
-                    "Failed to send lead email for session %s: %s", session.id, str(e)
+
+            except RuntimeError as e:
+                # RESEND_API_KEY missing — raised by EmailService.__init__()
+                logger.error("EmailService init failed (missing API key?): %s", str(e))
+                logger.error("FULL TRACEBACK:\n%s", traceback.format_exc())
+
+                try:
+                    session.delivery_status = "failed"  # type: ignore
+                    self.db.commit()
+                except Exception:
+                    self.db.rollback()
+
+                prompt_append = (
+                    "Thank you! We have your details saved. "
+                    "Our team will review your info and reach out to you soon."
                 )
-                # ✅ Mark as failed but lead data is already safely saved above
+
+            except Exception as e:
+                # Resend API call failed
+                logger.error("Email send failed: %s", str(e))
+                logger.error("FULL TRACEBACK:\n%s", traceback.format_exc())
+
                 try:
                     session.delivery_status = "failed"  # type: ignore
                     self.db.commit()
