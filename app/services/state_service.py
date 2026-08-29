@@ -5,31 +5,33 @@ from sqlalchemy.orm import Session
 from pydantic import EmailStr, TypeAdapter
 from app.db.models import ChatSession, LeadState
 from app.llm.groq_provider import GroqProvider
+
 logger = logging.getLogger(__name__)
 
 GROQ_MODEL = "llama3-8b-8192"
 
 
 class StateService:
-    def init(self, db: Session):
+    def __init__(self, db: Session):
         self.db = db
         self.llm = GroqProvider()
         self.llm.model_name = GROQ_MODEL
 
     async def detect_intent(self, user_message: str) -> bool:
         """Determines if the user is asking a pricing/quote question."""
-        # Keyword-based detection — fast and reliable
-        pricing_keywords = [
-            "how much", "price", "pricing", "cost", "costs", "quote",
-            "estimate", "budget", "rates", "fee", "fees", "charge",
-            "charges", "affordable", "expensive", "cheap", "package",
-            "packages", "plan", "plans", "hire", "start", "begin",
-            "get started", "i want to build", "can you develop",
-            "i need a developer", "can you build", "build for me",
-            "i want to hire", "can you make", "can you create"
-        ]
-        message_lower = user_message.lower()
-        return any(keyword in message_lower for keyword in pricing_keywords)
+        system_prompt = (
+            "Determine if the user is asking about pricing, costs, estimates, or quotes. "
+            "Respond with ONLY 'True' or 'False'."
+        )
+        try:
+            response = await self.llm.generate_response(
+                system_instruction=system_prompt,
+                user_prompt=user_message
+            )
+            return "true" in response.lower()
+        except Exception as e:
+            logger.exception("detect_intent failed: %s", str(e))
+            return False
 
     async def extract_lead_data(self, user_message: str, data_type: str) -> str:
         """Extracts specific entities (name, email, phone) from user messages."""
