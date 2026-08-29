@@ -1,72 +1,111 @@
+
+
 import sys
 import os
-import asyncio
 import pandas as pd
 from sentence_transformers import SentenceTransformer
 
-# Add the root directory to the python path
+# Add project root to path so app.* imports work
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.session import AsyncSessionLocal
-from app.db.models import KnowledgeDocument, KnowledgeChunk
+from app.db.session import SessionLocal  # ✅ sync session
+from app.db.models import KnowledgeChunk
+from sqlalchemy import text
 
-# Load the local open-source embedding model
-print("Loading local embedding model (this may take a moment to download the first time)...")
-model = SentenceTransformer('all-MiniLM-L6-v2')
+print("Loading embedding model (all-MiniLM-L6-v2)...")
+model = SentenceTransformer("all-MiniLM-L6-v2")
+print("✅ Model loaded.\n")
 
-def get_embedding(text: str) -> list[float]:
-    """Uses the local model to vectorize text."""
-    # encode() returns a numpy array, we convert it to a standard python list
-    return model.encode(text).tolist()
 
-async def ingest_data(file_path: str, dataset_version: str = "v2"):
-    print(f"Loading knowledge dataset from {file_path}...")
-    
+def get_embedding(text_input: str) -> list:
+    return model.encode(text_input).tolist()
+
+
+def ingest_data():
+    # Find the Excel file in project root
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    possible_names = [
+        "MoinSystems_AI_Public_Chatbot_RAG_Dataset_v2__1_.xlsx",
+        "MoinSystems_AI_Public_Chatbot_RAG_Dataset_v2 (1).xlsx",
+        "MoinSystems_AI_Public_Chatbot_RAG_Dataset_v2.xlsx",
+    ]
+
+    file_path = None
+    for name in possible_names:
+        candidate = os.path.join(project_root, name)
+        if os.path.exists(candidate):
+            file_path = candidate
+            break
+
+    if not file_path:
+        print("❌ ERROR: Excel file not found in project root.")
+        print("   Place the RAG dataset Excel file in your project root folder.")
+        sys.exit(1)
+
+    print(f"📖 Reading dataset from: {file_path}")
     df = pd.read_excel(file_path, sheet_name="RAG_Knowledge")
-    df = df.fillna("") 
-    
-    async with AsyncSessionLocal() as db:
-        doc = KnowledgeDocument(
-            id=f"moin_dataset_{dataset_version}",
-            source_name="MoinSystems RAG Excel",
-            version=dataset_version,
-        )
-        await db.merge(doc)
-        
-        for index, row in df.iterrows():
-            content = row["Content"]
+    df = df.fillna("")
+
+    validated = df[df["Data Status"] == "cleaned_validated"].copy()
+    print(f"✅ Found {len(validated)} validated chunks.\n")
+
+    db = SessionLocal()
+    try:
+        # Clear existing chunks
+        existing = db.execute(text("SELECT COUNT(*) FROM knowledge_chunk")).scalar()
+        if existing > 0:
+            print(f"⚠️  Clearing {existing} existing chunks...")
+            db.execute(text("DELETE FROM knowledge_chunk"))
+            db.commit()
+            print("✅ Table cleared.\n")
+
+        success = 0
+        failed = 0
+        total = len(validated)
+
+        for _, row in validated.iterrows():
+            chunk_id = str(row["ID"]).strip()
+            content = str(row["Content"]).strip()
+            embedding_text = str(row["Embedding Text"]).strip() or content
+            category = str(row["Category"]).strip()
+            tags = str(row["Tags"]).strip()
+
             if not content:
+                print(f"  ⚠️  Skipping {chunk_id} — empty content")
                 continue
-            
-            chunk_id = str(row["ID"])
-            print(f"Generating embedding for {chunk_id}: {row['Title']}")
-            
-            # Generate local vector
-            embedding = get_embedding(content)
-            
-            tags = [t.strip() for t in str(row["Tags"]).split(",")] if row["Tags"] else []
-            intents = [i.strip() for i in str(row["Intents"]).split(",")] if row["Intents"] else []
-            
-            chunk = KnowledgeChunk(
-                id=chunk_id,
-                document_id=doc.id,
-                content=content,
-                embedding=embedding,
-                category=str(row["Category"]),
-                tags=tags,
-                intents=intents
-            )
-            
-            await db.merge(chunk)
-            
-        await db.commit()
-        print("\n✅ Successfully indexed all knowledge chunks into pgvector using the local model!")
+
+            try:
+                print(f"  🔄 [{success + failed + 1}/{total}] Embedding {chunk_id}...")
+                embedding = get_embedding(embedding_text)
+
+                chunk = KnowledgeChunk(
+                    id=chunk_id,
+                    category=category,
+                    content=content,
+                    tags=tags,
+                    embedding=embedding,
+                )
+                db.merge(chunk)
+                db.commit()
+                success += 1
+
+            except Exception as e:
+                db.rollback()
+                failed += 1
+                print(f"  ❌ FAILED {chunk_id}: {e}")
+
+        print(f"\n{'='*50}")
+        print(f"✅ Ingestion complete!")
+        print(f"   Inserted/Updated : {success}")
+        print(f"   Failed           : {failed}")
+        print(f"{'='*50}")
+
+        total_in_db = db.execute(text("SELECT COUNT(*) FROM knowledge_chunk")).scalar()
+        print(f"\n📊 Total chunks in DB: {total_in_db}")
+
+    finally:
+        db.close()
+
 
 if __name__ == "__main__":
-    excel_file = "MoinSystems_AI_Public_Chatbot_RAG_Dataset_v2 (1).xlsx"
-    
-    if not os.path.exists(excel_file):
-        print(f"Error: Could not find '{excel_file}'.")
-    else:
-        asyncio.run(ingest_data(excel_file))
+    ingest_data()

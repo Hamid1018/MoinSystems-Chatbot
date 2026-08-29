@@ -1,14 +1,11 @@
 import uuid
 from datetime import datetime
 from enum import Enum as PyEnum
-from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Enum
+from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Enum, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from app.db.session import Base
-from sqlalchemy.orm import declarative_base
-
-Base = declarative_base()
-
+from pgvector.sqlalchemy import Vector
+from app.db.session import Base  # ✅ Only one Base — from session.py, NOT redeclared here
 
 
 class LeadState(PyEnum):
@@ -18,20 +15,22 @@ class LeadState(PyEnum):
     COLLECTING_PHONE = "collecting_phone"
     COMPLETED = "completed"
 
+
 class MessageRole(PyEnum):
     USER = "user"
     ASSISTANT = "assistant"
+
 
 class ChatSession(Base):
     __tablename__ = "chat_session"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lead_state = Column(Enum(LeadState), default=LeadState.NORMAL, nullable=False)
-    
+
     full_name = Column(String(255), nullable=True)
     email = Column(String(255), nullable=True)
     contact_number = Column(String(50), nullable=True)
-    
+
     company_name = Column(String(255), nullable=True)
     project_summary = Column(Text, nullable=True)
     service_interest = Column(String(255), nullable=True)
@@ -39,12 +38,14 @@ class ChatSession(Base):
     budget_range = Column(String(255), nullable=True)
     source_page = Column(String(255), nullable=True)
     conversation_summary = Column(Text, nullable=True)
-    
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     delivery_status = Column(String(50), default="pending")
     provider_message_id = Column(String(255), nullable=True)
+
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+
 
 class ChatMessage(Base):
     __tablename__ = "chat_message"
@@ -57,15 +58,15 @@ class ChatMessage(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     session = relationship("ChatSession", back_populates="messages")
-    
-    
-from pgvector.sqlalchemy import Vector  # Ensure this import is at the top of your models.py
+
 
 class KnowledgeChunk(Base):
     __tablename__ = "knowledge_chunk"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # ✅ String ID to match dataset IDs like "company_001", "service_001"
+    id = Column(String(100), primary_key=True)
+    category = Column(String(100), nullable=True)   # ✅ used by search_service.py
     content = Column(Text, nullable=False)
-    embedding = Column(Vector(384), nullable=True)  # Added 384-dimension vector column
-    metadata_json = Column(Text, nullable=True)
+    tags = Column(String(500), nullable=True)        # ✅ used by search_service.py
+    embedding = Column(Vector(384), nullable=True)   # 384-dim for all-MiniLM-L6-v2
     created_at = Column(DateTime, default=datetime.utcnow)
